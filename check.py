@@ -1,0 +1,14 @@
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY", "").strip()
+
+url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+response = requests.get(url).json()
+
+print("\n--- NEE API KEY KI WORKING MODELS IVI ---")
+for model in response.get('models', []):
+    if 'generateContent' in model.get('supportedGenerationMethods', []):
+        print(model['name'])
