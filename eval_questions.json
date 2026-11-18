@@ -1,0 +1,10 @@
+[
+  {"question": "What is generative AI?", "expected_keyword": "artificial intelligence"},
+  {"question": "What types of content can it produce?", "expected_keyword": "text"},
+  {"question": "Is generative AI useful for developers?", "expected_keyword": "developers"},
+  {"question": "What drives the recent buzz around this tech?", "expected_keyword": "interfaces"},
+  {"question": "How long does it take to create graphics?", "expected_keyword": "seconds"},
+  {"question": "Can it generate synthetic data?", "expected_keyword": "synthetic data"},
+  {"question": "Does it produce audio?", "expected_keyword": "audio"},
+  {"question": "What is the capital of France?", "expected_keyword": "cannot answer"}
+]

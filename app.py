@@ -1,126 +1,92 @@
-import os, requests, json
-import numpy as np
+import streamlit as st
+import os, requests, numpy as np
 from pypdf import PdfReader
 from dotenv import load_dotenv
 
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-def extract_text(pdf_path):
-    print(f"\nExtracting text from {pdf_path}...")
+st.set_page_config(page_title="DocuMind RAG", page_icon="📄")
+st.title("📄 DocuMind: Chat with your PDFs")
+
+if "chunk_data" not in st.session_state:
+    st.session_state.chunk_data = []
+if "doc_stats" not in st.session_state:
+    st.session_state.doc_stats = {}
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+def get_embedding(text, key):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={key}"
+    data = {"model": "models/gemini-embedding-001", "content": {"parts": [{"text": text}]}}
     try:
-        reader = PdfReader(pdf_path)
-        text = ""
-        for page in reader.pages:
-            extracted = page.extract_text()
-            if extracted:
-                text += extracted + "\n"
-        return text.strip()
-    except Exception as e:
-        print(f"Error reading PDF: {e}")
-        return ""
+        res = requests.post(url, headers={'Content-Type': 'application/json'}, json=data)
+        if res.status_code == 200:
+            return res.json()['embedding']['values']
+    except: return None
+    return None
 
-def chunk_text(text, size=500, overlap=50):
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + size
-        chunk = text[start:end]
-        chunks.append(chunk)
-        start += (size - overlap)
-    return chunks
-
-def get_embedding(text, api_key):
-    # Perfect embedding model URL
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
-    data = {
-        "model": "models/gemini-embedding-001",
-        "content": {"parts": [{"text": text}]}
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 200:
-            return response.json()['embedding']['values']
-        else:
-            print(f"\nEmbedding API Error: {response.text}")
-            return None
-    except Exception as e:
-        return None
-
-def cosine_similarity(a, b):
+def cosine_sim(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-def embed_and_cache(chunks, pdf_path, api_key):
-    cache_file = f"{pdf_path}.json"
-    if os.path.exists(cache_file):
-        print("Loading embeddings from cache...")
-        with open(cache_file, 'r') as f:
-            return json.load(f)
+with st.sidebar:
+    st.header("1. Upload Documents")
+    uploaded_files = st.file_uploader("Upload PDF files", type=['pdf'], accept_multiple_files=True)
+    if st.button("Process Documents") and uploaded_files:
+        with st.spinner("Processing documents..."):
+            all_text = ""
+            for file in uploaded_files:
+                reader = PdfReader(file)
+                all_text += "".join([page.extract_text() + "\n" for page in reader.pages if page.extract_text()])
             
-    print("Generating embeddings...")
-    chunk_data = []
-    for chunk in chunks:
-        vector = get_embedding(chunk, api_key)
-        if vector:
-            chunk_data.append({"chunk": chunk, "vector": vector, "source": pdf_path})
+            size, overlap, chunks = 500, 50, []
+            start = 0
+            while start < len(all_text):
+                chunks.append(all_text[start:start+size])
+                start += (size - overlap)
             
-    with open(cache_file, 'w') as f:
-        json.dump(chunk_data, f)
-    return chunk_data
-
-def retrieve(question, chunk_data, api_key, top_k=3):
-    q_vector = get_embedding(question, api_key)
-    if not q_vector:
-        return []
-        
-    scored_chunks = []
-    for data in chunk_data:
-        sim = cosine_similarity(q_vector, data['vector'])
-        scored_chunks.append((sim, data['chunk'], data['source']))
-        
-    scored_chunks.sort(reverse=True, key=lambda x: x[0])
-    return scored_chunks[:top_k]
-
-def answer_question(question, retrieved_chunks, api_key):
-    if not retrieved_chunks:
-        return "No relevant context found."
-        
-    context = "\n\n".join([f"Source: {c[2]}\nText: {c[1]}" for c in retrieved_chunks])
-    prompt = f"Answer the question based ONLY on the provided context.\n\nContext:\n{context}\n\nQuestion: {question}"
-    
-    # Perfect generation model URL (Removed '-latest')
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
-    data = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-        else:
-            return f"Answer API Error ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"Error: {e}"
-
-print("Welcome to DocuMind Week 3 (RAG System)!")
-file_path = input("Enter PDF file path: ")
-raw_text = extract_text(file_path)
-
-if raw_text:
-    chunks = chunk_text(raw_text)
-    chunk_data = embed_and_cache(chunks, file_path, api_key)
-    
-    while True:
-        question = input("\nAsk a question (or 'quit'): ")
-        if question.lower() == 'quit':
-            break
+            st.session_state.chunk_data = []
+            progress_bar = st.progress(0)
+            for i, c in enumerate(chunks):
+                vec = get_embedding(c, api_key)
+                if vec: st.session_state.chunk_data.append({"chunk": c, "vector": vec})
+                progress_bar.progress((i + 1) / len(chunks))
             
-        print("Searching...")
-        best_chunks = retrieve(question, chunk_data, api_key)
-        answer = answer_question(question, best_chunks, api_key)
-        
-        print("\nAnswer:\n", answer)
+            st.session_state.doc_stats = {"files": len(uploaded_files), "chunks": len(st.session_state.chunk_data)}
+            st.success("Documents processed and ready!")
+    
+    if st.session_state.doc_stats:
+        st.info(f"Loaded {st.session_state.doc_stats['files']} file(s) | {st.session_state.doc_stats['chunks']} knowledge chunks")
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+        if "source" in msg: st.caption(f"Source: {msg['source'][:100]}...")
+
+if prompt := st.chat_input("Ask a question about your documents..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"): st.markdown(prompt)
+    
+    if not st.session_state.chunk_data:
+        response = "Please upload and process a PDF document first."
+        with st.chat_message("assistant"): st.markdown(response)
+        st.session_state.messages.append({"role": "assistant", "content": response})
+    else:
+        q_vec = get_embedding(prompt, api_key)
+        if q_vec:
+            scored = [(cosine_sim(q_vec, d['vector']), d['chunk']) for d in st.session_state.chunk_data]
+            scored.sort(reverse=True, key=lambda x: x[0])
+            context = "\n\n".join([c[1] for c in scored[:3]])
+            
+            rag_prompt = f"Answer ONLY from context. If not found, explicitly say 'I cannot answer this based on the loaded documents.'\n\nContext:\n{context}\n\nQuestion: {prompt}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+            
+            with st.chat_message("assistant"):
+                try:
+                    res = requests.post(url, headers={'Content-Type': 'application/json'}, json={"contents": [{"parts": [{"text": rag_prompt}]}]})
+                    answer = res.json()['candidates'][0]['content']['parts'][0]['text']
+                    st.markdown(answer)
+                    st.caption(f"Source context: {scored[0][1][:150]}...")
+                    st.session_state.messages.append({"role": "assistant", "content": answer, "source": scored[0][1]})
+                except Exception as e:
+                    st.error("Error connecting to Gemini API.")
