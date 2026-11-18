@@ -21,3 +21,8 @@ skillme-summarizer/
 ├── .env             # your API key (DO NOT commit this)
 ├── requirements.txt # dependencies
 └── README.md
+### Week 2 Updates: Interactive Document Processing
+Added new commands to interact with the document summary:
+- **`key_points`**: Extracts 5-8 main bullet points from the document.
+- **`quiz_me`**: Generates 3-5 quiz questions with answers for revision.
+- **`ask`**: Allows users to ask a follow-up question based on the document context.
