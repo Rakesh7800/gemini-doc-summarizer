@@ -26,3 +26,7 @@ Added new commands to interact with the document summary:
 - **`key_points`**: Extracts 5-8 main bullet points from the document.
 - **`quiz_me`**: Generates 3-5 quiz questions with answers for revision.
 - **`ask`**: Allows users to ask a follow-up question based on the document context.
+### Week 3 Updates: Retrieval-Augmented Generation (RAG)
+- **PDF Processing**: Extracted and chunked text from PDFs using `pypdf`.
+- **Embeddings**: Generated and cached vector embeddings using `gemini-embedding-001`.
+- **RAG Pipeline**: Built a semantic search and Q&A system using cosine similarity and `gemini-2.5-flash` to answer questions directly from the uploaded document context.
